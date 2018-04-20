@@ -1,0 +1,23 @@
+{
+  "name": "home-ui-tplink-hs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "tplink-smarthome-crypto": "^1.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tjakie/home-ui-tplink-hs.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tjakie/home-ui-tplink-hs/issues"
+  },
+  "homepage": "https://github.com/tjakie/home-ui-tplink-hs#readme"
+}
