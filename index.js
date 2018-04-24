@@ -68,9 +68,6 @@ if (false) {
 	checkMTime();
 }
 
-
-
-
 homeUiApi.requestApi("device", "POST", {
 	name: processArguments.name,
 	type: "switch"
@@ -82,63 +79,77 @@ homeUiApi.requestApi("device", "POST", {
 		throw "api returns strange result!";
 	}
 	else {
-		homeUiApi.requestApi("deviceValue/" + id, "GET", {}, function (err, curVal) {
-			var isInErrorState = false;
-			var goToState = null;
-			function nextStep () {
-				if (goToState !== null && !isInErrorState) { 
-					setPlugState(processArguments.config.ip, goToState, function () {
-						console.log("Successfully updated device state to", goToState);
+		var isInErrorState = false;
+		var curVal = null;
+		var goToState = null;
+		
+		
+		var logAll = false;
+		function nextStep () {
+			if (goToState !== null && !isInErrorState) { 
+				if (goToState !== curVal) {
+					var shouldGoToState = (goToState === true);
+					
+					setPlugState(processArguments.config.ip, shouldGoToState, function () {
+						console.log("Set state", shouldGoToState);
 						
-						curVal = goToState? 100 : 0;
-						goToState = null;
-						
-						setTimeout(nextStep, processArguments.config.timeout);
+						if (shouldGoToState === goToState) {
+							goToState = null;
+						}
+						curVal = shouldGoToState;
+						nextStep();
 					});
 				}
 				else {
-					getPlugState(processArguments.config.ip, function (err, state) {
-						if (err) {
-							if (!isInErrorState) {
-								console.log("Cant communicate with:", processArguments.config.ip);
-							}
-							isInErrorState = true;
+					goToState = null;
+					nextStep();
+				}
+			}
+			else {
+				getPlugState(processArguments.config.ip, function (err, state) {
+					if (err) {
+						if (!isInErrorState) {
+							console.log("Can't communicate with:", processArguments.config.ip);
+						}
+						isInErrorState = true;
+						
+						setTimeout(nextStep, processArguments.config.timeout);
+					}
+					else {
+						if (isInErrorState) {
+							isInErrorState = false;
 							
-							setTimeout(nextStep, processArguments.config.timeout);
+							console.log("Communication success");
+						}
+						
+						if (curVal !== state) {
+							curVal = state;
+							
+							homeUiApi.requestApi("deviceValue", "POST", {
+								id: id,
+								value: curVal? 100 : 0
+							}, function () {
+								console.log("New state", state);
+								
+								setTimeout(nextStep, processArguments.config.timeout);
+							});
 						}
 						else {
-							if (isInErrorState) {
-								isInErrorState = false;
-								
-								console.log("Communication success");
-							}
-							
-							if (curVal !== state) {
-								curVal = state;
-								
-								homeUiApi.requestApi("deviceValue", "POST", {
-									id: id,
-									value: curVal? 100 : 0
-								}, function () {
-									setTimeout(nextStep, processArguments.config.timeout);
-								});
-							}
-							else {
-								setTimeout(nextStep, processArguments.config.timeout);
-							}
+							setTimeout(nextStep, processArguments.config.timeout);
 						}
-					});
-				}
-			};
+					}
+				});
+			}
+		};
 
-			nextStep();
+		nextStep();
+		
+		homeUiApi.onDeviceChange(id, function (deviceData, tstamp) {
+			var newVal = parseInt(deviceData.value) === 100;
 			
-			homeUiApi.onDeviceChange(id, function (deviceData) {
-				var newVal = deviceData.value === 100;
-				if (newVal !== curVal) {
-					goToState = newVal;
-				}
-			});
+			if (newVal !== goToState) {
+				goToState = newVal;
+			}
 		});
 	}
 });
@@ -160,7 +171,7 @@ var encrypt = require('tplink-smarthome-crypto');
 function getPlugState (ip, callBack) {	
 	var socket = net.connect("9999", ip);
 	socket.setKeepAlive(false);
-	socket.setTimeout(1000);
+	socket.setTimeout(5000);
 
 	socket.on('connect', function () {
 		socket.write(encrypt.encryptWithHeader('{"system":{"get_sysinfo":{}}}'), function() { });
@@ -171,7 +182,10 @@ function getPlugState (ip, callBack) {
 	});
 	
 	socket.on('error', function (e) {
-		callBack(e);
+		if (callBack) {
+			callBack(e);
+			callBack = false;
+		}
 	});
 	
 	socket.on('end', function () {
@@ -188,8 +202,9 @@ function getPlugState (ip, callBack) {
 			console.log(e);
 		}
 		
-		if (jsonData !== false) {
+		if (jsonData !== false && callBack) {
 			callBack(null, jsonData.system.get_sysinfo.relay_state === 1);
+			callBack = false;
 		}
 	});
 };
@@ -197,7 +212,7 @@ function getPlugState (ip, callBack) {
 function setPlugState (ip, state, callBack) {
 	var socket = net.connect("9999", ip);
 	socket.setKeepAlive(false);
-	socket.setTimeout(1000);
+	socket.setTimeout(5000);
 
 	socket.on('connect', function () {
 		socket.write(encrypt.encryptWithHeader('{"system":{"set_relay_state":{"state":' + (state? 1 : 0) + '}}}'), function  () { });
@@ -212,10 +227,16 @@ function setPlugState (ip, state, callBack) {
 	});
 
 	socket.on('error', function () {
-		callBack(state);
+		if (callBack) {
+			callBack(state);
+			callBack = false;
+		}
 	});
 	
 	socket.on('data', function (data) {
-		callBack(state);
+		if (callBack) {
+			callBack(state);
+			callBack = false;
+		}
 	});
 };
